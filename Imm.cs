@@ -251,6 +251,22 @@ namespace Arith.Input.Text
         }
 
         /// <summary>
+        /// 指定した入力コンテキストを関連付けします。
+        /// </summary>
+        public void AssociateContext(IntPtr hIMC)
+        {
+            ImmAssociateContextEx(hWnd, hIMC, 0);
+        }
+
+        /// <summary>
+        /// デフォルトの入力コンテキストと関連付けします。
+        /// </summary>
+        public void AssociateDefaultContext()
+        {
+            ImmAssociateContextEx(hWnd, IntPtr.Zero, IACE.DEFAULT);
+        }
+
+        /// <summary>
         /// IMM の入力コンテキストに関する操作を提供します。
         /// </summary>
         public class Context
