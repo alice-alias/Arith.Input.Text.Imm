@@ -131,6 +131,9 @@ namespace Arith.Input.Text
         static extern IntPtr ImmGetContext(IntPtr hWnd);
 
         [DllImport("imm32")]
+        static extern IntPtr ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+        [DllImport("imm32")]
         static extern int ImmGetCompositionString(IntPtr hIMC, GCS dwIndex, byte[] buf, uint dwBufLen);
 
         [DllImport("imm32")]
@@ -164,11 +167,33 @@ namespace Arith.Input.Text
         
         string GetCompositionString(GCS dwIndex)
         {
-            IntPtr ctx = ImmGetContext(hWnd);
-            var sz = ImmGetCompositionString(ctx, dwIndex, null, 0);
-            var buf = new byte[sz];
-            ImmGetCompositionString(ctx, dwIndex, buf, (uint)sz);
-            return Encoding.Default.GetString(buf);
+            return Lock(ctx =>
+            {
+                var sz = ImmGetCompositionString(ctx, dwIndex, null, 0);
+                var buf = new byte[sz];
+                ImmGetCompositionString(ctx, dwIndex, buf, (uint)sz);
+                return Encoding.Default.GetString(buf);
+            });
+        }
+
+        void Lock(Action<IntPtr> action)
+        {
+            var hContext = ImmGetContext(hWnd);
+            action(hContext);
+            ImmReleaseContext(hWnd, hContext);
+        }
+
+        T Lock<T>(Func<IntPtr, T> action)
+        {
+            var hContext = ImmGetContext(hWnd);
+            try
+            {
+                return action(hContext);
+            }
+            finally
+            {
+                ImmReleaseContext(hWnd, hContext);
+            }
         }
 
         /// <summary>
@@ -182,7 +207,7 @@ namespace Arith.Input.Text
         /// <summary>
         /// IME が有効になっているか否かを取得します。
         /// </summary>
-        public bool OpenStatus { get { return ImmGetOpenStatus(ImmGetContext(hWnd)) != 0; } }
+        public bool OpenStatus { get { return Lock(ctx => ImmGetOpenStatus(ctx))!= 0; } }
         /// <summary>
         /// IMEのモードを取得します。
         /// </summary>
@@ -190,9 +215,12 @@ namespace Arith.Input.Text
         {
             get
             {
-                uint dmy, cmd;
-                ImmGetConversionStatus(ImmGetContext(hWnd), out cmd, out dmy);
-                return (ImeConversionMode)cmd;
+                return Lock(ctx =>
+                {
+                    uint dmy, cmd;
+                    ImmGetConversionStatus(ctx, out cmd, out dmy);
+                    return (ImeConversionMode)cmd;
+                });
             }
         }
 
@@ -216,9 +244,12 @@ namespace Arith.Input.Text
         /// </summary>
         public int Position { 
             get {
-                var c = ImmGetCompositionString(ImmGetContext(hWnd), GCS.CURSORPOS, null, 0) & 0xffff;
-                if (c == 0xffff) return -1;
-                return Encoding.Default.GetString(Encoding.Default.GetBytes(Composition), 0, c).Length; 
+                return Lock(ctx =>
+                {
+                    var c = ImmGetCompositionString(ctx, GCS.CURSORPOS, null, 0) & 0xffff;
+                    if (c == 0xffff) return -1;
+                    return Encoding.Default.GetString(Encoding.Default.GetBytes(Composition), 0, c).Length;
+                });
             }
         }
 
@@ -228,26 +259,28 @@ namespace Arith.Input.Text
         /// <returns>文節の配列。</returns>
         public string[] GetCompositionClauses()
         {
-            IntPtr ctx = ImmGetContext(hWnd);
-            var sz = ImmGetCompositionString(ctx, GCS.COMPCLAUSE, null, 0);
-            var buf = new byte[sz];
-            ImmGetCompositionString(ctx, GCS.COMPCLAUSE, buf, (uint)sz);
-            if (sz == 0) return new string[0];
-            var ofs = new int[sz / 4 - 1];
-            using (var stream = new System.IO.MemoryStream(buf))
-            using (var reader = new System.IO.BinaryReader(stream))
+            return Lock(ctx =>
             {
-                for (int i = 0; i < sz / 4 - 1; i++)
-                    ofs[i] = reader.ReadInt32();
-            }
+                var sz = ImmGetCompositionString(ctx, GCS.COMPCLAUSE, null, 0);
+                var buf = new byte[sz];
+                ImmGetCompositionString(ctx, GCS.COMPCLAUSE, buf, (uint)sz);
+                if (sz == 0) return new string[0];
+                var ofs = new int[sz / 4 - 1];
+                using (var stream = new System.IO.MemoryStream(buf))
+                using (var reader = new System.IO.BinaryReader(stream))
+                {
+                    for (int i = 0; i < sz / 4 - 1; i++)
+                        ofs[i] = reader.ReadInt32();
+                }
 
-            var cmp = Composition;
-            var bytes = Encoding.Default.GetBytes(cmp);
-            var res = new string[ofs.Length];
-            for (var i = 0; i < ofs.Length - 1; i++)
-                res[i] = Encoding.Default.GetString(bytes, ofs[i], ofs[i + 1] - ofs[i]);
-            res[res.Length - 1] = Encoding.Default.GetString(bytes, ofs[res.Length - 1], bytes.Length - ofs[res.Length - 1]);
-            return res;
+                var cmp = Composition;
+                var bytes = Encoding.Default.GetBytes(cmp);
+                var res = new string[ofs.Length];
+                for (var i = 0; i < ofs.Length - 1; i++)
+                    res[i] = Encoding.Default.GetString(bytes, ofs[i], ofs[i + 1] - ofs[i]);
+                res[res.Length - 1] = Encoding.Default.GetString(bytes, ofs[res.Length - 1], bytes.Length - ofs[res.Length - 1]);
+                return res;
+            });
         }
 
         /// <summary>
@@ -380,22 +413,24 @@ namespace Arith.Input.Text
         /// </summary>
         public CandidateList GetCandidateList()
         {
-            IntPtr ctx = ImmGetContext(hWnd);
-            var sz = ImmGetCandidateList(ctx, 0, null, 0);
-            var buf = new sbyte[sz];
-            ImmGetCandidateList(ctx, 0, buf, (uint)sz);
-
-            unsafe
+            return Lock(ctx =>
             {
-                fixed (sbyte* p = buf)
+                var sz = ImmGetCandidateList(ctx, 0, null, 0);
+                var buf = new sbyte[sz];
+                ImmGetCandidateList(ctx, 0, buf, (uint)sz);
+
+                unsafe
                 {
-                    CANDIDATELIST* cl = (CANDIDATELIST*)p;
-                    var candidates = new string[cl->dwCount];
-                    for (var i = 0; i < candidates.Length; i++)
-                        candidates[i] = new string(p + cl->dwOffset[i]);
-                    return new CandidateList(candidates, (int)cl->dwSelection, (int)cl->dwPageStart, (int)cl->dwPageSize);
+                    fixed (sbyte* p = buf)
+                    {
+                        CANDIDATELIST* cl = (CANDIDATELIST*)p;
+                        var candidates = new string[cl->dwCount];
+                        for (var i = 0; i < candidates.Length; i++)
+                            candidates[i] = new string(p + cl->dwOffset[i]);
+                        return new CandidateList(candidates, (int)cl->dwSelection, (int)cl->dwPageStart, (int)cl->dwPageSize);
+                    }
                 }
-            }
+            });
         }
 
         unsafe struct CANDIDATELIST
