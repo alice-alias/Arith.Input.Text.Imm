@@ -107,7 +107,7 @@ namespace ImmSample
                 }
             }
             var cdl = imm.GetCandidateList();
-            e.Graphics.DrawString(string.Join("", clauses) + "\n" + confirmed + "\n" + cdl.Selection + ":" + string.Join(", " , cdl.Candidates.Skip(cdl.PageStart).Take(cdl.PageSize)) + "\n" + (imm.OpenStatus ? "On" : "Off") + "(" + imm.ConversionMode.ToString() + "): " + imm.Position + "\n" + imm.Description, this.Font, brush, 0, 0, sf);
+            e.Graphics.DrawString(string.Join("", clauses) + "\n" + confirmed + "\n" + cdl.Selection + ":" + string.Join(", " , cdl.Skip(cdl.PageStart).Take(cdl.PageSize)) + "\n" + (imm.OpenStatus ? "On" : "Off") + "(" + imm.ConversionMode.ToString() + "): " + imm.Position + "\n" + imm.Description, this.Font, brush, 0, 0, sf);
 
             
         }

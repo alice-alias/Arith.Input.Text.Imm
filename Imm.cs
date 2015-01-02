@@ -390,14 +390,10 @@ namespace Arith.Input.Text
                 fixed (sbyte* p = buf)
                 {
                     CANDIDATELIST* cl = (CANDIDATELIST*)p;
-                    var res = new CandidateList();
-                    res.Selection = (int)cl->dwSelection;
-                    res.PageStart = (int)cl->dwPageStart;
-                    res.PageSize = (int)cl->dwPageSize;
-                    res.Candidates = new string[cl->dwCount];
-                    for (var i = 0; i < cl->dwCount; i++)
-                        res.Candidates[i] = new string(p + cl->dwOffset[i]);
-                    return res;
+                    var candidates = new string[cl->dwCount];
+                    for (var i = 0; i < candidates.Length; i++)
+                        candidates[i] = new string(p + cl->dwOffset[i]);
+                    return new CandidateList(candidates, (int)cl->dwSelection, (int)cl->dwPageStart, (int)cl->dwPageSize);
                 }
             }
         }
@@ -423,12 +419,9 @@ namespace Arith.Input.Text
         /// <summary>
         /// 変換候補のリストとそれにまつわる情報を提供します。
         /// </summary>
-        public class CandidateList
+        public class CandidateList : IEnumerable<string>
         {
-            /// <summary>
-            /// 変換候補のリスト。
-            /// </summary>
-            public string[] Candidates { get; internal set; }
+            List<string> candidates;
 
             /// <summary>
             /// 現在選択されている変換候補。
@@ -445,8 +438,31 @@ namespace Arith.Input.Text
             /// </summary>
             public int PageSize { get; internal set; }
 
-            internal CandidateList()
+            internal CandidateList(IEnumerable<string> candidates, int selection, int pageStart, int pageSize)
             {
+                this.candidates = candidates.ToList();
+                Selection = selection;
+                PageSize = pageSize;
+                PageStart = pageStart;
+            }
+
+            /// <summary>
+            /// <see cref="CandidateList"/> を反復処理する列挙しを返します。
+            /// </summary>
+            public IEnumerator<string> GetEnumerator()
+            {
+                return candidates.GetEnumerator();
+            }
+
+            /// <summary>
+            /// インデックスの要素を取得します。
+            /// </summary>
+            /// <param name="index">インデックス</param>
+            public string this[int index] { get { return candidates[index]; } }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
             }
         }
     }
